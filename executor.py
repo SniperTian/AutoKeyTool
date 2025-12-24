@@ -1,9 +1,7 @@
-# executor.py
 import time
 import keyboard
 import win32gui
 from PyQt6.QtCore import QThread, pyqtSignal
-# 【必要修复】引入 BackgroundInput
 from utils import TextUtils, WindowMgr, BackgroundInput
 
 class TaskExecutor(QThread):
@@ -63,28 +61,42 @@ class TaskExecutor(QThread):
                 key_raw = action.get('key')
                 delay = action.get('delay', 100)
                 
-                # 格式化显示
+                # 格式化日志
                 fmt_key = TextUtils.format_key_text(key_raw)
                 
-                # 检查句柄有效性
+                # 检查窗口句柄有效性
                 target_hwnd = self.kb_hwnd
                 if target_hwnd != 0 and not win32gui.IsWindow(target_hwnd):
-                    self.sig_progress.emit(f"⚠️ 窗口已失效，切换至前台模式")
+                    self.sig_progress.emit(f"⚠️ 目标窗口已失效，切换至前台模式")
                     target_hwnd = 0
 
                 self.sig_progress.emit(f"第 {current_loop} 轮 | 按键: {fmt_key}")
 
                 try:
                     if target_hwnd == 0:
+                        # --- 前台模式 ---
                         keyboard.send(key_raw)
                     else:
-                        # 【必要修复】调用后台发送函数
-                        # 确保不是 pass
-                        BackgroundInput.send_key(target_hwnd, key_raw)
-                except Exception as e:
-                    self.sig_progress.emit(f"❌ 错误: {e}")
+                        # --- 后台模式 (优化版) ---
+                        # 1. 获取键码
+                        vk = BackgroundInput.get_vk_code(key_raw)
+                        if vk:
+                            # 2. 模拟按下
+                            BackgroundInput.key_down(target_hwnd, vk)
+                            # 3. 稍微等待一小会儿 (模拟真实按键停留，提高成功率)
+                            time.sleep(0.05) 
+                            # 4. 模拟抬起
+                            BackgroundInput.key_up(target_hwnd, vk)
+                        else:
+                            self.sig_progress.emit(f"⚠️ 无法解析按键: {key_raw}")
 
-                self._smart_sleep(delay / 1000.0)
+                except Exception as e:
+                    self.sig_progress.emit(f"❌ 执行错误: {e}")
+
+                # 执行用户设定的等待时长
+                # 减去上面占用的 0.05s，保持节奏准确
+                wait_time = max(0, (delay / 1000.0) - 0.05)
+                self._smart_sleep(wait_time)
             
             if self._is_running: time.sleep(0.05)
 

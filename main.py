@@ -129,10 +129,6 @@ class AutoKeyApp(MainWindowUI):
             self.lbl_bind_hk.setText(f"绑定: {TextUtils.format_key_text(self.current_bind_key)}")
             self.apply_hotkeys()
 
-    def register_bind_hotkey(self):
-        # 兼容性方法，实际由 apply_hotkeys 统一处理
-        pass
-
     def start_task(self):
         if self.executor.isRunning(): return
         is_mouse = self.rb_mouse.isChecked()

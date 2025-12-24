@@ -15,22 +15,6 @@
         {
             "key": "D",
             "delay": 1000
-        },
-        {
-            "key": "D",
-            "delay": 1000
-        },
-        {
-            "key": "Ctrl + W",
-            "delay": 1000
-        },
-        {
-            "key": "A",
-            "delay": 1000
-        },
-        {
-            "key": "A",
-            "delay": 1000
         }
     ],
     "mode": "keyboard",

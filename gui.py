@@ -130,8 +130,8 @@ class MainWindowUI(QWidget):
         self.setup_ui()
 
     def setup_ui(self):
-        self.setWindowTitle("AutoKey Pro v3.2")
-        self.resize(600, 780)
+        self.setWindowTitle("AutoKey Pro v3.3")
+        self.resize(600, 800)
         self.setStyleSheet("""
             QWidget { font-family: 'Segoe UI', 'Microsoft YaHei'; } 
             QGroupBox { border: 1px solid #ddd; border-radius: 5px; margin-top: 10px; }
@@ -273,21 +273,28 @@ class MainWindowUI(QWidget):
         self.btn_start = QPushButton("▶ 开始运行")
         self.btn_start.setFixedHeight(45)
         self.btn_start.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; font-size: 16px;")
+        
         self.btn_stop = QPushButton("⛔ 停止运行")
         self.btn_stop.setFixedHeight(45)
         self.btn_stop.setStyleSheet("background-color: #F44336; color: white; font-weight: bold; font-size: 16px;")
         self.btn_stop.setEnabled(False)
+        
         ctrl_layout.addWidget(self.btn_start)
         ctrl_layout.addWidget(self.btn_stop)
         main_layout.addLayout(ctrl_layout)
 
-        # 【核心修复】补全保存和加载按钮
+        # 5. 文件操作 (修改点：样式与控制按钮统一)
         file_layout = QHBoxLayout()
         self.btn_save = QPushButton("💾 保存配置")
         self.btn_load = QPushButton("📂 加载配置")
-        # 简单美化按钮
-        self.btn_save.setStyleSheet("padding: 5px;")
-        self.btn_load.setStyleSheet("padding: 5px;")
+        
+        # 统一高度和字体，使用蓝色和橙色区分
+        self.btn_save.setFixedHeight(45)
+        self.btn_save.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold; font-size: 16px;")
+        
+        self.btn_load.setFixedHeight(45)
+        self.btn_load.setStyleSheet("background-color: #FF9800; color: white; font-weight: bold; font-size: 16px;")
+        
         file_layout.addWidget(self.btn_save)
         file_layout.addWidget(self.btn_load)
         main_layout.addLayout(file_layout)
