@@ -1,10 +1,23 @@
 {
-    "start": "f9",
-    "stop": "f10",
-    "bind": "f11",
+    "start": "a",
+    "stop": "ctrl+w",
+    "bind": "home",
     "loop": 1,
-    "actions": [],
+    "actions": [
+        {
+            "key": "Ctrl + W",
+            "delay": 1000
+        },
+        {
+            "key": "Ctrl + A",
+            "delay": 1000
+        },
+        {
+            "key": "A",
+            "delay": 1000
+        }
+    ],
     "mode": "keyboard",
     "mouse_cps": 5,
-    "minimize_to_tray": true
+    "minimize_to_tray": false
 }

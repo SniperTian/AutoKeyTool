@@ -11,7 +11,7 @@ from gui import MainWindowUI, HotkeySettingDialog
 from executor import TaskExecutor
 from hotkey import HotkeyManager
 from config import ConfigManager
-from utils import WindowMgr, TextUtils, IconUtils # 引入 IconUtils
+from utils import WindowMgr, TextUtils, IconUtils
 
 DEFAULT_CONFIG_FILE = "default_config.json"
 
@@ -29,7 +29,7 @@ class AutoKeyApp(MainWindowUI):
         self.current_bind_key = "f11"
 
         self.bind_events()
-        self.init_tray() # 初始化托盘
+        self.init_tray()
         
         self.load_startup_config()
         self.refresh_windows()
@@ -52,8 +52,6 @@ class AutoKeyApp(MainWindowUI):
     def init_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setToolTip("AutoKey Pro")
-        
-        # 修复 1: 设置生成的图标，解决 setVisible 报错和托盘隐形问题
         icon_pixmap = IconUtils.create_default_icon()
         self.tray_icon.setIcon(QIcon(icon_pixmap))
         
@@ -62,33 +60,52 @@ class AutoKeyApp(MainWindowUI):
         action_quit = QAction("退出程序", self)
         
         action_show.triggered.connect(self.showNormal)
-        action_quit.triggered.connect(self.quit_app) # 连接到自定义退出
+        action_quit.triggered.connect(self.quit_app)
         
         menu.addAction(action_show)
         menu.addAction(action_quit)
         self.tray_icon.setContextMenu(menu)
         self.tray_icon.show()
-        
         self.tray_icon.activated.connect(self.on_tray_activated)
 
     def register_bind_hotkey(self):
+        # 注册 F11 绑定热键
         try: keyboard.remove_hotkey(self.do_bind_window)
         except: pass
-        try: keyboard.add_hotkey(self.current_bind_key, self.do_bind_window)
-        except Exception as e: self.update_status(f"绑定热键注册失败: {e}")
+        try: 
+            # 这是一个后台热键
+            keyboard.add_hotkey(self.current_bind_key, self.do_bind_window)
+        except Exception as e: 
+            self.update_status(f"绑定热键注册失败: {e}")
 
     def do_bind_window(self):
+        """
+        后台热键触发：绑定当前前台窗口。
+        因为这是在后台线程运行，必须使用 QTimer.singleShot 转到主线程操作 UI
+        """
+        # 1. 获取当前前台窗口（用户当前正在操作的窗口）
         hwnd, title = WindowMgr.get_foreground_window_info()
+        
+        # 排除自己 (AutoKey) 和 空标题窗口
         if title and "AutoKey Pro" not in title:
-            idx = self.combo_win.findData(hwnd)
-            if idx == -1:
-                self.combo_win.addItem(f"[{hwnd}] {title[:20]}...", hwnd)
-                idx = self.combo_win.count() - 1
-            QTimer.singleShot(0, lambda: self._select_window_safe(idx, title))
+            # 2. 转到主线程执行 UI 更新
+            QTimer.singleShot(0, lambda: self._bind_window_ui_safe(hwnd, title))
+        else:
+            QTimer.singleShot(0, lambda: self.update_status("⚠️ 无法绑定：请激活目标窗口后再按热键"))
 
-    def _select_window_safe(self, idx, title):
+    def _bind_window_ui_safe(self, hwnd, title):
+        """主线程槽函数：安全更新 ComboBox"""
+        # 查找窗口是否已存在列表中
+        idx = self.combo_win.findData(hwnd)
+        
+        if idx == -1:
+            # 不存在则添加
+            self.combo_win.addItem(f"[{hwnd}] {title[:25]}...", hwnd)
+            idx = self.combo_win.count() - 1
+            
+        # 选中它
         self.combo_win.setCurrentIndex(idx)
-        self.update_status(f"已绑定: {title[:15]}...")
+        self.update_status(f"✅ 已绑定窗口: {title[:20]}...")
 
     def open_hotkey_settings(self):
         dlg = HotkeySettingDialog(self.current_start_key, self.current_stop_key, self.current_bind_key, self)
@@ -97,7 +114,6 @@ class AutoKeyApp(MainWindowUI):
             self.current_stop_key = dlg.results['stop']
             self.current_bind_key = dlg.results['bind']
             
-            # 更新顶部标签
             self.lbl_start_hk.setText(f"启动: {TextUtils.format_key_text(self.current_start_key)}")
             self.lbl_stop_hk.setText(f"停止: {TextUtils.format_key_text(self.current_stop_key)}")
             self.lbl_bind_hk.setText(f"绑定: {TextUtils.format_key_text(self.current_bind_key)}")
@@ -225,24 +241,23 @@ class AutoKeyApp(MainWindowUI):
         }
         ConfigManager.save_config(filepath, data)
 
-    # --- 修复 2 & 3: 生命周期管理 ---
+    # --- 核心修复：关闭事件 ---
     def closeEvent(self, event):
-        # 无论如何先保存配置
+        """窗口关闭事件：决定是最小化还是退出"""
+        # 1. 保存配置
         self.save_current_config(DEFAULT_CONFIG_FILE)
         
-        # 检查是否应该最小化
+        # 2. 判断逻辑
         if self.chk_tray.isChecked():
-            if self.tray_icon.isVisible():
-                self.hide() # 只是隐藏窗口
-                # 注意：不要调用 event.ignore() 除非你确定不希望窗口销毁
-                # 在 PyQt 中，如果 hide() 了，ignore() 是合理的
-                event.ignore()
-                self.update_status("已最小化到托盘")
-                return
-
-        # 如果不最小化，或者托盘不可用，则执行真正的退出清理
-        self.perform_cleanup()
-        event.accept()
+            # 用户选择最小化
+            self.hide()
+            event.ignore() # 阻止窗口销毁
+            self.update_status("程序已最小化到托盘")
+        else:
+            # 用户选择直接关闭
+            self.perform_cleanup()
+            event.accept() # 接受关闭事件
+            QApplication.quit() # 【核心】显式调用退出，防止托盘导致的进程残留
 
     def on_tray_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
@@ -250,31 +265,26 @@ class AutoKeyApp(MainWindowUI):
             self.activateWindow()
 
     def perform_cleanup(self):
-        """执行彻底的清理操作，防止进程残留"""
+        """退出前的清理"""
         self.executor.stop()
-        self.executor.wait() # 等待线程结束
-        
-        # 关键修复: 卸载 keyboard 所有的钩子
-        # 否则 Python 进程会因为 keyboard 的后台线程而无法退出
+        self.executor.wait()
         try:
             keyboard.unhook_all()
-        except:
-            pass
+        except: pass
 
     def quit_app(self):
-        """托盘菜单点击退出时调用"""
+        """托盘菜单退出"""
         self.save_current_config(DEFAULT_CONFIG_FILE)
         self.perform_cleanup()
         QApplication.quit()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    
-    # 修复 Font 报错：设置全局字体大小
     font = QFont("Microsoft YaHei", 9) 
     app.setFont(font)
     
-    # 确保窗口关闭时不直接退出 App (配合托盘使用)
+    # 关键设置：关闭最后一个窗口时不退出（为了支持最小化到托盘）
+    # 但我们已经在 closeEvent 中手动处理了 quit 逻辑，所以这里设为 False 是安全的
     app.setQuitOnLastWindowClosed(False)
     
     window = AutoKeyApp()

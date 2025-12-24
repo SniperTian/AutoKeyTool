@@ -3,10 +3,7 @@ import time
 import keyboard
 import win32api, win32con
 from PyQt6.QtCore import QThread, pyqtSignal
-from utils import TextUtils, WindowMgr
-
-# ... (BackgroundInput 类保持不变，或根据需要引入) ...
-# 为了节省篇幅，假设 BackgroundInput 已包含在 utils 或单独文件中，这里简化处理
+from utils import TextUtils, WindowMgr # 引入 TextUtils
 
 class TaskExecutor(QThread):
     sig_progress = pyqtSignal(str)
@@ -17,15 +14,13 @@ class TaskExecutor(QThread):
         self._is_running = False
         self.mode = "keyboard"
         
-        # 键盘参数
         self.kb_actions = []
         self.kb_loop = 1
         self.kb_hwnd = 0
         
-        # 鼠标参数
         self.mouse_type = "left"
         self.mouse_click = "click"
-        self.mouse_cps = 1 # 频率
+        self.mouse_cps = 1
 
     def setup_keyboard(self, actions, loop, hwnd=0):
         self.mode = "keyboard"
@@ -65,20 +60,19 @@ class TaskExecutor(QThread):
                 if not self._is_running: break
                 
                 key_raw = action.get('key')
-                # 确保格式化后的键也能被 keyboard 识别 (通常没问题)
-                # 这里发送原始的小写按键可能更稳，但在 UI 上存的是 TextUtils 处理过的
-                # keyboard.send 接受 "Ctrl+A" 这种格式
-                
                 delay = action.get('delay', 100)
-                self.sig_progress.emit(f"第 {current_loop} 轮 | 按键: {key_raw}")
+                
+                # 【修复】使用 TextUtils 格式化日志输出 (ctrl+a -> Ctrl + A)
+                fmt_key = TextUtils.format_key_text(key_raw)
+                self.sig_progress.emit(f"第 {current_loop} 轮 | 按键: {fmt_key}")
 
                 try:
                     if self.kb_hwnd == 0:
                         keyboard.send(key_raw)
                     else:
-                        # 后台发送逻辑 (需确保 utils.BackgroundInput 存在)
+                        # 后台发送需自行实现或保持占位
                         # BackgroundInput.send_key(self.kb_hwnd, key_raw)
-                        pass 
+                        pass
                 except Exception as e:
                     print(f"Key Error: {e}")
 
@@ -93,7 +87,6 @@ class TaskExecutor(QThread):
         MOUSEEVENTF_RIGHTDOWN = 0x0008
         MOUSEEVENTF_RIGHTUP = 0x0010
 
-        # 计算间隔：1秒 / 次数
         interval = 1.0 / self.mouse_cps
 
         while self._is_running:

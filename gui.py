@@ -1,66 +1,121 @@
-# gui.py
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, 
     QTableWidgetItem, QLabel, QHeaderView, QAbstractItemView, 
     QSpinBox, QFrame, QRadioButton, QButtonGroup, QComboBox, QStackedWidget,
-    QDialog, QCheckBox
+    QDialog, QMessageBox, QCheckBox
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot
+from PyQt6.QtGui import QFont, QColor
 import keyboard
 from utils import TextUtils
 
 # --- 录制弹窗保持不变 ---
 class KeyRecorderDialog(QDialog):
+    # 定义信号：用于向外界传递最终录制的按键
     sig_key_recorded = pyqtSignal(str)
+    
+    # 定义内部信号：用于跨线程更新UI
+    sig_update_preview = pyqtSignal(str) # 更新预览文本
+    sig_close_dialog = pyqtSignal()      # 关闭窗口
+
     def __init__(self, title="按键录制", parent=None):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.resize(350, 150)
         self.final_key = None
         self.hook = None
+        
+        # 状态追踪
         self.pressed_modifiers = set()
         
         layout = QVBoxLayout()
         self.lbl_tip = QLabel("请按下按键...\n(支持 Ctrl+A 等组合键)")
         self.lbl_tip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_tip.setStyleSheet("font-size: 14px; color: #555;")
         layout.addWidget(self.lbl_tip)
         
         self.lbl_preview = QLabel("")
         self.lbl_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_preview.setStyleSheet("font-size: 24px; font-weight: bold; color: #1976D2;")
         layout.addWidget(self.lbl_preview)
+        
         self.setLayout(layout)
+
+        # 核心修复：连接信号到主线程的槽函数
+        self.sig_update_preview.connect(self.update_preview_ui)
+        self.sig_close_dialog.connect(self.close_dialog_ui)
 
     def showEvent(self, event):
         self.pressed_modifiers.clear()
+        # 开启 Hook
         self.hook = keyboard.hook(self._on_key_event)
         super().showEvent(event)
 
     def closeEvent(self, event):
-        if self.hook: keyboard.unhook(self.hook)
+        # 关闭窗口时务必卸载 hook
+        if self.hook:
+            keyboard.unhook(self.hook)
         super().closeEvent(event)
 
     def _on_key_event(self, e):
-        if e.event_type == 'up': return
+        """
+        后台线程回调函数。
+        注意：这里绝对不能直接调用 self.lbl_preview.setText 或 self.accept()
+        必须通过 emit 信号转发给主线程。
+        """
+        if e.event_type == 'up':
+            return
+
         key_name = e.name.lower()
-        modifiers = {'ctrl', 'right ctrl', 'shift', 'right shift', 'alt', 'right alt', 'windows'}
+        
+        # 常见修饰键列表
+        modifiers = {'ctrl', 'right ctrl', 'shift', 'right shift', 'alt', 'right alt', 'windows', 'left windows', 'right windows'}
         
         if key_name in modifiers:
-            simple_mod = key_name.replace('right ', '')
+            # 处理修饰键
+            simple_mod = key_name.replace('right ', '').replace('left ', '').replace(' windows', 'win')
+            if simple_mod == 'windows': simple_mod = 'win' # 修正win键名
+            
             self.pressed_modifiers.add(simple_mod)
-            self._update_preview()
+            
+            # 【修复点】发射信号通知主线程更新UI，而不是直接更新
+            self._emit_preview_update()
         else:
+            # 处理普通键 (结束录制)
             mods = sorted(list(self.pressed_modifiers))
-            if mods: result = "+".join(mods + [key_name])
-            else: result = key_name
+            if mods:
+                result = "+".join(mods + [key_name])
+            else:
+                result = key_name
+            
             self.final_key = result
+            
+            # 【修复点】发射数据信号 和 关闭信号
             self.sig_key_recorded.emit(result)
-            self.accept()
+            self.sig_close_dialog.emit()
 
-    def _update_preview(self):
+    def _emit_preview_update(self):
+        """辅助函数：计算当前按键文本并发射更新信号"""
         mods = sorted(list(self.pressed_modifiers))
+        # 简单格式化一下发给UI显示
         text = " + ".join([m.capitalize() for m in mods] + ["..."])
+        self.sig_update_preview.emit(text)
+
+    # --- 以下函数运行在主线程 (GUI线程) ---
+    
+    @pyqtSlot(str)
+    def update_preview_ui(self, text):
+        """槽函数：安全更新 UI"""
         self.lbl_preview.setText(text)
+
+    @pyqtSlot()
+    def close_dialog_ui(self):
+        """槽函数：安全关闭窗口"""
+        # 再次确保卸载 Hook，防止时序问题
+        if self.hook:
+            keyboard.unhook(self.hook)
+            self.hook = None
+        self.accept()
 
 # --- 热键设置窗口 (保持不变) ---
 class HotkeySettingDialog(QDialog):
