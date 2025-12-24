@@ -339,7 +339,7 @@ class MainWindowUI(QWidget):
         # 整数框，恢复默认样式以显示箭头
         self.spin_m_cps = QSpinBox()
         self.spin_m_cps.setRange(1, 1000)
-        self.spin_m_cps.setValue(5)
+        self.spin_m_cps.setValue(100)
         self.spin_m_cps.setMinimumHeight(35)
         
         row_m3.addWidget(self.spin_m_cps)
