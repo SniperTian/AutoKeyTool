@@ -5,7 +5,7 @@ class HotkeyManager(QObject):
     # 定义三个信号
     sig_start = pyqtSignal()
     sig_stop = pyqtSignal()
-    sig_bind = pyqtSignal() # 新增绑定信号
+    sig_bind = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -17,18 +17,15 @@ class HotkeyManager(QObject):
         """
         统一注册所有热键
         """
-        # 1. 卸载旧热键
-        try:
-            keyboard.unhook_all_hotkeys()
-        except:
-            pass
+        # 先清理旧的
+        self.unregister_all()
 
         self.start_key = start_key
         self.stop_key = stop_key
         self.bind_key = bind_key
 
         try:
-            # 2. 注册新热键 (回调在后台线程执行)
+            # 注册新热键
             keyboard.add_hotkey(self.start_key, self._on_start_triggered)
             keyboard.add_hotkey(self.stop_key, self._on_stop_triggered)
             keyboard.add_hotkey(self.bind_key, self._on_bind_triggered)
@@ -36,6 +33,13 @@ class HotkeyManager(QObject):
             return True, f"热键已更新: 启动[{self.start_key}] 停止[{self.stop_key}] 绑定[{self.bind_key}]"
         except Exception as e:
             return False, f"热键注册失败: {str(e)}"
+
+    def unregister_all(self):
+        """临时卸载所有热键 (防止录制时触发)"""
+        try:
+            keyboard.unhook_all_hotkeys()
+        except:
+            pass
 
     # --- 内部回调 ---
     def _on_start_triggered(self):

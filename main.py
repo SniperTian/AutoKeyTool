@@ -119,14 +119,22 @@ class AutoKeyApp(MainWindowUI):
         self._bind_window_ui(hwnd, title)
 
     def open_hotkey_settings(self):
-        dlg = HotkeySettingDialog(self.current_start_key, self.current_stop_key, self.current_bind_key, self)
-        if dlg.exec():
-            self.current_start_key = dlg.results['start']
-            self.current_stop_key = dlg.results['stop']
-            self.current_bind_key = dlg.results['bind']
-            self.lbl_start_hk.setText(f"启动: {TextUtils.format_key_text(self.current_start_key)}")
-            self.lbl_stop_hk.setText(f"停止: {TextUtils.format_key_text(self.current_stop_key)}")
-            self.lbl_bind_hk.setText(f"绑定: {TextUtils.format_key_text(self.current_bind_key)}")
+        """打开热键设置窗口"""
+        # 【关键修复】设置期间暂停热键，防止冲突
+        self.hotkey_mgr.unregister_all()
+        
+        try:
+            dlg = HotkeySettingDialog(self.current_start_key, self.current_stop_key, self.current_bind_key, self)
+            if dlg.exec():
+                self.current_start_key = dlg.results['start']
+                self.current_stop_key = dlg.results['stop']
+                self.current_bind_key = dlg.results['bind']
+                
+                self.lbl_start_hk.setText(f"启动: {TextUtils.format_key_text(self.current_start_key)}")
+                self.lbl_stop_hk.setText(f"停止: {TextUtils.format_key_text(self.current_stop_key)}")
+                self.lbl_bind_hk.setText(f"绑定: {TextUtils.format_key_text(self.current_bind_key)}")
+        finally:
+            # 无论保存还是取消，窗口关闭后恢复热键
             self.apply_hotkeys()
 
     def start_task(self):
@@ -219,13 +227,21 @@ class AutoKeyApp(MainWindowUI):
 
     def on_table_double_click(self, row, col):
         if col == 1:
-            from gui import KeyRecorderDialog
-            rec = KeyRecorderDialog(parent=self)
-            if rec.exec():
-                key = rec.final_key
-                item = QTableWidgetItem(TextUtils.format_key_text(key))
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.table.setItem(row, col, item)
+            # 【关键修复】录制按键前，暂停全局热键，防止按键冲突
+            self.hotkey_mgr.unregister_all()
+            
+            try:
+                from gui import KeyRecorderDialog
+                rec = KeyRecorderDialog(parent=self)
+                if rec.exec():
+                    key = rec.final_key
+                    item = QTableWidgetItem(TextUtils.format_key_text(key))
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.table.setItem(row, col, item)
+            finally:
+                # 录制结束后（无论是否保存），恢复热键
+                self.apply_hotkeys()
+                
         elif col == 2:
             current_val = self.table.item(row, col).text()
             try: val_int = int(current_val)
@@ -260,7 +276,7 @@ class AutoKeyApp(MainWindowUI):
                     {"key": "S", "delay": 1000}, 
                     {"key": "D", "delay": 1000}
                 ],
-                "mode": "keyboard", "mouse_cps": 100, "minimize_to_tray": False
+                "mode": "keyboard", "mouse_cps": 5, "minimize_to_tray": False
             }
             ConfigManager.save_config(DEFAULT_CONFIG_FILE, default_data)
         
@@ -300,7 +316,6 @@ class AutoKeyApp(MainWindowUI):
             "minimize_to_tray": self.chk_tray.isChecked()
         }
 
-    # 【修复】重新添加 save_current_config 方法
     def save_current_config(self, filepath):
         data = self._get_current_config_dict()
         ConfigManager.save_config(filepath, data)
