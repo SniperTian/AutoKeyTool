@@ -1,12 +1,12 @@
 import sys
 import os
 import json
+import ctypes
 import keyboard
 from PyQt6.QtWidgets import (QApplication, QSystemTrayIcon, QMenu, QMessageBox, QFileDialog, QTableWidgetItem, QInputDialog)
-from PyQt6.QtGui import QIcon, QFont, QAction
-from PyQt6.QtCore import pyqtSlot, Qt
+from PyQt6.QtGui import QIcon, QAction, QFont
+from PyQt6.QtCore import QTimer, pyqtSignal, pyqtSlot, Qt
 
-# 导入模块
 from gui import MainWindowUI, HotkeySettingDialog
 from executor import TaskExecutor
 from hotkey import HotkeyManager
@@ -16,30 +16,29 @@ from utils import WindowMgr, TextUtils, IconUtils
 DEFAULT_CONFIG_FILE = "default_config.json"
 
 class AutoKeyApp(MainWindowUI):
+    sig_bind_window = pyqtSignal(int, str)
+
     def __init__(self):
         super().__init__()
         
-        # 1. 初始化核心
         self.executor = TaskExecutor()
-        self.hotkey_mgr = HotkeyManager() # 使用新版 HotkeyManager
+        self.hotkey_mgr = HotkeyManager()
         self.config_mgr = ConfigManager()
         self.tray_icon = None
         
-        # 运行时热键变量
         self.current_start_key = "f9"
         self.current_stop_key = "f10"
         self.current_bind_key = "f11"
 
-        # 2. 初始化流程
         self.bind_events()          
         self.init_tray()            
-        self.load_startup_config()  # 加载配置 (会自动注册热键)
-        self.refresh_windows()
-        
-        # 注意：这里不再调用 self.register_bind_hotkey()，因为已经在 apply_hotkeys 中统一处理
+        self.load_startup_config()  
+        self.refresh_windows()      
+        self.register_bind_hotkey() 
+
+        self.sig_bind_window.connect(self.on_bind_window_signal)
 
     def bind_events(self):
-        # 界面按钮
         self.btn_mod_hotkey.clicked.connect(self.open_hotkey_settings)
         self.btn_add.clicked.connect(lambda: self.add_row_data("a", 1000))
         self.btn_del.clicked.connect(self.remove_row)
@@ -48,26 +47,27 @@ class AutoKeyApp(MainWindowUI):
         self.btn_refresh_win.clicked.connect(self.refresh_windows)
         self.btn_start.clicked.connect(self.start_task)
         self.btn_stop.clicked.connect(self.stop_task)
+        
+        # 绑定保存与加载按钮
         self.btn_save.clicked.connect(self.handle_save_file)
         self.btn_load.clicked.connect(self.handle_load_file)
         
-        # 执行器信号
         self.executor.sig_progress.connect(self.update_status)
         self.executor.sig_finished.connect(self.on_finished)
-        
-        # 热键信号 (统一连接)
         self.hotkey_mgr.sig_start.connect(self.start_task)
         self.hotkey_mgr.sig_stop.connect(self.stop_task)
-        self.hotkey_mgr.sig_bind.connect(self.do_bind_window) # 绑定信号连接到槽函数
+        self.hotkey_mgr.sig_bind.connect(self.do_bind_window)
 
     def init_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setToolTip("AutoKey Pro")
-        self.tray_icon.setIcon(QIcon(IconUtils.create_default_icon()))
+        icon_pixmap = IconUtils.create_default_icon()
+        self.tray_icon.setIcon(QIcon(icon_pixmap))
         
         menu = QMenu()
         action_show = QAction("显示主界面", self)
         action_quit = QAction("退出程序", self)
+        
         action_show.triggered.connect(self.showNormal)
         action_quit.triggered.connect(self.quit_app)
         
@@ -78,7 +78,6 @@ class AutoKeyApp(MainWindowUI):
         self.tray_icon.activated.connect(self.on_tray_activated)
 
     def apply_hotkeys(self):
-        """向 HotkeyManager 注册所有三个热键"""
         ok, msg = self.hotkey_mgr.register_hotkeys(
             self.current_start_key, 
             self.current_stop_key, 
@@ -86,42 +85,38 @@ class AutoKeyApp(MainWindowUI):
         )
         self.update_status(msg)
 
-    # --- 绑定窗口逻辑 ---
     def do_bind_window(self):
-        """响应 F11 热键 (已自动在主线程执行)"""
         try:
             hwnd, title = WindowMgr.get_foreground_window_info()
-            
             if title and "AutoKey Pro" in title:
-                self.update_status("⚠️ 提示: 绑定了本程序窗口")
-                # 不阻拦，允许调试
-
+                self.update_status("⚠️ 提示: 你绑定了本程序窗口")
             if hwnd:
                 self._bind_window_ui(hwnd, title)
             else:
-                self.update_status("⚠️ 无效窗口句柄")
+                self.update_status("⚠️ 未检测到有效窗口句柄")
         except Exception as e:
-            self.update_status(f"❌ 绑定错误: {e}")
+            self.update_status(f"❌ 绑定出错: {e}")
 
     def _bind_window_ui(self, hwnd, title):
         display_title = title if title and title.strip() else "无标题窗口"
-        
         idx = self.combo_win.findData(hwnd)
         if idx == -1:
             self.combo_win.addItem(f"[{hwnd}] {display_title[:25]}...", hwnd)
             idx = self.combo_win.count() - 1
-            
         self.combo_win.setCurrentIndex(idx)
         self.update_status(f"✅ 已绑定: [{hwnd}] {display_title[:15]}...")
         
-        # 弹窗提示 (置顶)
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle("绑定成功")
         msg_box.setIcon(QMessageBox.Icon.Information)
-        msg_box.setText(f"目标窗口已锁定！\n\n句柄: {hwnd}\n标题: {display_title}\n\n现在可最小化该窗口，按 {self.current_start_key.upper()} 挂机。")
+        msg_box.setText(f"目标窗口已锁定！\n\n句柄ID: {hwnd}\n窗口名: {display_title}\n\n现在您可以最小化该窗口，按 {TextUtils.format_key_text(self.current_start_key)} 开始后台挂机。")
         msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
         msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
         msg_box.exec()
+
+    @pyqtSlot(int, str)
+    def on_bind_window_signal(self, hwnd, title):
+        self._bind_window_ui(hwnd, title)
 
     def open_hotkey_settings(self):
         dlg = HotkeySettingDialog(self.current_start_key, self.current_stop_key, self.current_bind_key, self)
@@ -129,17 +124,17 @@ class AutoKeyApp(MainWindowUI):
             self.current_start_key = dlg.results['start']
             self.current_stop_key = dlg.results['stop']
             self.current_bind_key = dlg.results['bind']
-            
             self.lbl_start_hk.setText(f"启动: {TextUtils.format_key_text(self.current_start_key)}")
             self.lbl_stop_hk.setText(f"停止: {TextUtils.format_key_text(self.current_stop_key)}")
             self.lbl_bind_hk.setText(f"绑定: {TextUtils.format_key_text(self.current_bind_key)}")
-            
             self.apply_hotkeys()
 
-    # --- 任务控制 ---
+    def register_bind_hotkey(self):
+        # 兼容性方法，实际由 apply_hotkeys 统一处理
+        pass
+
     def start_task(self):
         if self.executor.isRunning(): return
-        
         is_mouse = self.rb_mouse.isChecked()
         if is_mouse:
             m_type = "left" if self.combo_m_type.currentIndex() == 0 else "right"
@@ -154,7 +149,6 @@ class AutoKeyApp(MainWindowUI):
             loop = self.spin_loop.value()
             hwnd = self.combo_win.currentData()
             self.executor.setup_keyboard(actions, loop, hwnd)
-            
         self.toggle_ui(False)
         self.executor.start()
 
@@ -176,7 +170,7 @@ class AutoKeyApp(MainWindowUI):
     def update_status(self, msg):
         self.lbl_status.setText(msg)
 
-    # --- 表格数据 ---
+    # --- 表格逻辑 ---
     def get_table_data(self):
         data = []
         for r in range(self.table.rowCount()):
@@ -189,17 +183,14 @@ class AutoKeyApp(MainWindowUI):
         r = self.table.rowCount()
         self.table.insertRow(r)
         
-        # 序号
         item_idx = QTableWidgetItem(str(r + 1))
         item_idx.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.setItem(r, 0, item_idx)
 
-        # 按键
         item_key = QTableWidgetItem(TextUtils.format_key_text(key))
         item_key.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.setItem(r, 1, item_key)
 
-        # 延时
         item_delay = QTableWidgetItem(str(delay))
         item_delay.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.setItem(r, 2, item_delay)
@@ -260,27 +251,23 @@ class AutoKeyApp(MainWindowUI):
         if current_idx > 0 and current_idx < self.combo_win.count():
             self.combo_win.setCurrentIndex(current_idx)
 
-    # --- 配置管理 (优化版) ---
+    # --- 配置管理逻辑 ---
+
     def load_startup_config(self):
-        """启动加载：不存在则创建默认 ASD 配置"""
+        """加载或创建默认配置"""
         if not os.path.exists(DEFAULT_CONFIG_FILE):
             default_data = {
-                "start": "f9", 
-                "stop": "f10", 
-                "bind": "f11", 
-                "loop": 0, # 【需求】默认无限循环
+                "start": "f9", "stop": "f10", "bind": "f11", 
+                "loop": 0, 
                 "actions": [
                     {"key": "A", "delay": 1000}, 
                     {"key": "S", "delay": 1000}, 
                     {"key": "D", "delay": 1000}
                 ],
-                "mode": "keyboard", 
-                "mouse_cps": 5, 
-                "minimize_to_tray": False
+                "mode": "keyboard", "mouse_cps": 5, "minimize_to_tray": False
             }
             ConfigManager.save_config(DEFAULT_CONFIG_FILE, default_data)
         
-        # 统一加载
         data, _ = ConfigManager.load_config(DEFAULT_CONFIG_FILE)
         if data: self.restore_ui_from_data(data)
 
@@ -288,14 +275,10 @@ class AutoKeyApp(MainWindowUI):
         self.current_start_key = data.get("start", "f9")
         self.current_stop_key = data.get("stop", "f10")
         self.current_bind_key = data.get("bind", "f11")
-        
         self.lbl_start_hk.setText(f"启动: {TextUtils.format_key_text(self.current_start_key)}")
         self.lbl_stop_hk.setText(f"停止: {TextUtils.format_key_text(self.current_stop_key)}")
         self.lbl_bind_hk.setText(f"绑定: {TextUtils.format_key_text(self.current_bind_key)}")
-        
-        # 【关键】在这里统一注册所有热键
         self.apply_hotkeys()
-        
         self.spin_loop.setValue(data.get("loop", 0))
         self.chk_tray.setChecked(data.get("minimize_to_tray", False))
         
@@ -321,21 +304,19 @@ class AutoKeyApp(MainWindowUI):
             "minimize_to_tray": self.chk_tray.isChecked()
         }
 
-    # 【手动保存配置】
+    # 【修复】重新添加 save_current_config 方法
+    def save_current_config(self, filepath):
+        data = self._get_current_config_dict()
+        ConfigManager.save_config(filepath, data)
+
     def handle_save_file(self):
         path, _ = QFileDialog.getSaveFileName(self, "保存配置", "config.json", "JSON Files (*.json)")
         if path:
             if not path.lower().endswith(".json"):
                 path += ".json"
-            
-            data = self._get_current_config_dict()
-            success, msg = ConfigManager.save_config(path, data)
-            if success:
-                self.update_status(f"配置已保存: {os.path.basename(path)}")
-            else:
-                QMessageBox.critical(self, "保存失败", msg)
+            self.save_current_config(path)
+            self.update_status(f"配置已保存: {os.path.basename(path)}")
 
-    # 【手动加载配置】
     def handle_load_file(self):
         path, _ = QFileDialog.getOpenFileName(self, "加载配置", "", "JSON Files (*.json)")
         if path:
