@@ -1,10 +1,7 @@
-# utils.py
 import win32gui
 import win32con
 import win32api
-import win32gui
 from PyQt6.QtGui import QPixmap, QPainter, QColor
-from PyQt6.QtCore import QSize
 
 class WindowMgr:
     @staticmethod
@@ -51,7 +48,6 @@ class BackgroundInput:
             return True
         return False
     
-
 class TextUtils:
     @staticmethod
     def format_key_text(key_str):

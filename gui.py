@@ -9,14 +9,11 @@ from PyQt6.QtGui import QFont, QColor
 import keyboard
 from utils import TextUtils
 
-# --- 录制弹窗保持不变 ---
+# --- 按键录制窗口 ---
 class KeyRecorderDialog(QDialog):
-    # 定义信号：用于向外界传递最终录制的按键
     sig_key_recorded = pyqtSignal(str)
-    
-    # 定义内部信号：用于跨线程更新UI
-    sig_update_preview = pyqtSignal(str) # 更新预览文本
-    sig_close_dialog = pyqtSignal()      # 关闭窗口
+    sig_update_preview = pyqtSignal(str)
+    sig_close_dialog = pyqtSignal()
 
     def __init__(self, title="按键录制", parent=None):
         super().__init__(parent)
@@ -24,8 +21,6 @@ class KeyRecorderDialog(QDialog):
         self.resize(350, 150)
         self.final_key = None
         self.hook = None
-        
-        # 状态追踪
         self.pressed_modifiers = set()
         
         layout = QVBoxLayout()
@@ -38,86 +33,53 @@ class KeyRecorderDialog(QDialog):
         self.lbl_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_preview.setStyleSheet("font-size: 24px; font-weight: bold; color: #1976D2;")
         layout.addWidget(self.lbl_preview)
-        
         self.setLayout(layout)
 
-        # 核心修复：连接信号到主线程的槽函数
         self.sig_update_preview.connect(self.update_preview_ui)
         self.sig_close_dialog.connect(self.close_dialog_ui)
 
     def showEvent(self, event):
         self.pressed_modifiers.clear()
-        # 开启 Hook
         self.hook = keyboard.hook(self._on_key_event)
         super().showEvent(event)
 
     def closeEvent(self, event):
-        # 关闭窗口时务必卸载 hook
-        if self.hook:
-            keyboard.unhook(self.hook)
+        if self.hook: keyboard.unhook(self.hook)
         super().closeEvent(event)
 
     def _on_key_event(self, e):
-        """
-        后台线程回调函数。
-        注意：这里绝对不能直接调用 self.lbl_preview.setText 或 self.accept()
-        必须通过 emit 信号转发给主线程。
-        """
-        if e.event_type == 'up':
-            return
-
+        if e.event_type == 'up': return
         key_name = e.name.lower()
-        
-        # 常见修饰键列表
         modifiers = {'ctrl', 'right ctrl', 'shift', 'right shift', 'alt', 'right alt', 'windows', 'left windows', 'right windows'}
-        
         if key_name in modifiers:
-            # 处理修饰键
             simple_mod = key_name.replace('right ', '').replace('left ', '').replace(' windows', 'win')
-            if simple_mod == 'windows': simple_mod = 'win' # 修正win键名
-            
+            if simple_mod == 'windows': simple_mod = 'win'
             self.pressed_modifiers.add(simple_mod)
-            
-            # 【修复点】发射信号通知主线程更新UI，而不是直接更新
             self._emit_preview_update()
         else:
-            # 处理普通键 (结束录制)
             mods = sorted(list(self.pressed_modifiers))
-            if mods:
-                result = "+".join(mods + [key_name])
-            else:
-                result = key_name
-            
+            result = "+".join(mods + [key_name]) if mods else key_name
             self.final_key = result
-            
-            # 【修复点】发射数据信号 和 关闭信号
             self.sig_key_recorded.emit(result)
             self.sig_close_dialog.emit()
 
     def _emit_preview_update(self):
-        """辅助函数：计算当前按键文本并发射更新信号"""
         mods = sorted(list(self.pressed_modifiers))
-        # 简单格式化一下发给UI显示
         text = " + ".join([m.capitalize() for m in mods] + ["..."])
         self.sig_update_preview.emit(text)
 
-    # --- 以下函数运行在主线程 (GUI线程) ---
-    
     @pyqtSlot(str)
     def update_preview_ui(self, text):
-        """槽函数：安全更新 UI"""
         self.lbl_preview.setText(text)
 
     @pyqtSlot()
     def close_dialog_ui(self):
-        """槽函数：安全关闭窗口"""
-        # 再次确保卸载 Hook，防止时序问题
         if self.hook:
             keyboard.unhook(self.hook)
             self.hook = None
         self.accept()
 
-# --- 热键设置窗口 (保持不变) ---
+# --- 热键设置窗口 ---
 class HotkeySettingDialog(QDialog):
     def __init__(self, current_start, current_stop, current_bind, parent=None):
         super().__init__(parent)
@@ -161,16 +123,15 @@ class HotkeySettingDialog(QDialog):
                 self.results[key_key] = new_key
                 label_widget.setText(TextUtils.format_key_text(new_key))
 
-# --- 主界面 ---
+# --- 主界面 UI ---
 class MainWindowUI(QWidget):
     def __init__(self):
         super().__init__()
         self.setup_ui()
 
     def setup_ui(self):
-        self.setWindowTitle("AutoKey Pro v3.1")
+        self.setWindowTitle("AutoKey Pro v3.2")
         self.resize(600, 780)
-        # 修复：移除了全局 font-size 设置，解决 Point size <= 0 错误
         self.setStyleSheet("""
             QWidget { font-family: 'Segoe UI', 'Microsoft YaHei'; } 
             QGroupBox { border: 1px solid #ddd; border-radius: 5px; margin-top: 10px; }
@@ -182,23 +143,19 @@ class MainWindowUI(QWidget):
         main_layout = QVBoxLayout()
         self.setLayout(main_layout)
 
-        # 1. 顶部热键显示区 (已修改：增加绑定热键)
+        # 1. 顶部热键栏
         hk_frame = QFrame()
         hk_frame.setStyleSheet("background-color: #FAFAFA; border-radius: 8px; border: 1px solid #DDD;")
         hk_layout = QHBoxLayout(hk_frame)
-        
         self.lbl_start_hk = QLabel("启动: F9")
         self.lbl_stop_hk = QLabel("停止: F10")
-        self.lbl_bind_hk = QLabel("绑定: F11") # 新增
-        
+        self.lbl_bind_hk = QLabel("绑定: F11")
         for lbl in [self.lbl_start_hk, self.lbl_stop_hk, self.lbl_bind_hk]:
             lbl.setStyleSheet("font-weight: bold; color: #333; padding: 4px; margin-right: 10px;")
-        
         hk_layout.addWidget(self.lbl_start_hk)
         hk_layout.addWidget(self.lbl_stop_hk)
         hk_layout.addWidget(self.lbl_bind_hk)
         hk_layout.addStretch()
-        
         self.btn_mod_hotkey = QPushButton("🛠️ 修改热键")
         self.btn_mod_hotkey.setStyleSheet("background-color: #E3F2FD; color: #1565C0; border: 1px solid #2196F3;")
         hk_layout.addWidget(self.btn_mod_hotkey)
@@ -219,10 +176,10 @@ class MainWindowUI(QWidget):
         mode_layout.addWidget(self.chk_tray)
         main_layout.addLayout(mode_layout)
 
-        # 3. 堆叠窗口
+        # 3. 堆叠页面
         self.stack = QStackedWidget()
         
-        # Page A: Keyboard
+        # --- Page A: 键盘 ---
         page_kb = QWidget()
         layout_kb = QVBoxLayout(page_kb)
         win_layout = QHBoxLayout()
@@ -235,8 +192,6 @@ class MainWindowUI(QWidget):
         win_layout.addWidget(self.btn_refresh_win)
         layout_kb.addLayout(win_layout)
         
-        # 移除旧的 Bind Tip，因为已经做到顶部了
-        
         loop_layout = QHBoxLayout()
         loop_layout.addWidget(QLabel("循环次数 (0=无限):"))
         self.spin_loop = QSpinBox()
@@ -246,9 +201,15 @@ class MainWindowUI(QWidget):
         loop_layout.addStretch()
         layout_kb.addLayout(loop_layout)
 
-        self.table = QTableWidget(0, 2)
-        self.table.setHorizontalHeaderLabels(["按键内容", "等待时长 (ms)"])
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table = QTableWidget(0, 3) 
+        self.table.setHorizontalHeaderLabels(["序号", "按键内容", "等待时长 (ms)"])
+        self.table.verticalHeader().setVisible(False)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)   
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch) 
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)   
+        self.table.setColumnWidth(0, 60)
+        self.table.setColumnWidth(2, 110)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.cellDoubleClicked.connect(self.on_table_double_click)
@@ -266,7 +227,7 @@ class MainWindowUI(QWidget):
         layout_kb.addLayout(tb_btns)
         self.stack.addWidget(page_kb)
 
-        # Page B: Mouse
+        # --- Page B: 鼠标 ---
         page_mouse = QWidget()
         layout_mouse = QVBoxLayout(page_mouse)
         m_frame = QFrame()
@@ -320,19 +281,23 @@ class MainWindowUI(QWidget):
         ctrl_layout.addWidget(self.btn_stop)
         main_layout.addLayout(ctrl_layout)
 
+        # 【核心修复】补全保存和加载按钮
+        file_layout = QHBoxLayout()
+        self.btn_save = QPushButton("💾 保存配置")
+        self.btn_load = QPushButton("📂 加载配置")
+        # 简单美化按钮
+        self.btn_save.setStyleSheet("padding: 5px;")
+        self.btn_load.setStyleSheet("padding: 5px;")
+        file_layout.addWidget(self.btn_save)
+        file_layout.addWidget(self.btn_load)
+        main_layout.addLayout(file_layout)
+
         self.rb_keyboard.toggled.connect(lambda: self.stack.setCurrentIndex(0))
         self.rb_mouse.toggled.connect(lambda: self.stack.setCurrentIndex(1))
 
     # --- 逻辑占位 ---
     def on_table_double_click(self, row, col):
-        if col == 0:
-            rec = KeyRecorderDialog(parent=self)
-            if rec.exec():
-                key = rec.final_key
-                self.table.item(row, col).setText(TextUtils.format_key_text(key))
+        pass
     
     def add_row_data(self, key="a", delay=500):
-        r = self.table.rowCount()
-        self.table.insertRow(r)
-        self.table.setItem(r, 0, QTableWidgetItem(TextUtils.format_key_text(key)))
-        self.table.setItem(r, 1, QTableWidgetItem(str(delay)))
+        pass

@@ -1,9 +1,10 @@
 # executor.py
 import time
 import keyboard
-import win32api, win32con
+import win32gui
 from PyQt6.QtCore import QThread, pyqtSignal
-from utils import TextUtils, WindowMgr # 引入 TextUtils
+# 【必要修复】引入 BackgroundInput
+from utils import TextUtils, WindowMgr, BackgroundInput
 
 class TaskExecutor(QThread):
     sig_progress = pyqtSignal(str)
@@ -62,19 +63,26 @@ class TaskExecutor(QThread):
                 key_raw = action.get('key')
                 delay = action.get('delay', 100)
                 
-                # 【修复】使用 TextUtils 格式化日志输出 (ctrl+a -> Ctrl + A)
+                # 格式化显示
                 fmt_key = TextUtils.format_key_text(key_raw)
+                
+                # 检查句柄有效性
+                target_hwnd = self.kb_hwnd
+                if target_hwnd != 0 and not win32gui.IsWindow(target_hwnd):
+                    self.sig_progress.emit(f"⚠️ 窗口已失效，切换至前台模式")
+                    target_hwnd = 0
+
                 self.sig_progress.emit(f"第 {current_loop} 轮 | 按键: {fmt_key}")
 
                 try:
-                    if self.kb_hwnd == 0:
+                    if target_hwnd == 0:
                         keyboard.send(key_raw)
                     else:
-                        # 后台发送需自行实现或保持占位
-                        # BackgroundInput.send_key(self.kb_hwnd, key_raw)
-                        pass
+                        # 【必要修复】调用后台发送函数
+                        # 确保不是 pass
+                        BackgroundInput.send_key(target_hwnd, key_raw)
                 except Exception as e:
-                    print(f"Key Error: {e}")
+                    self.sig_progress.emit(f"❌ 错误: {e}")
 
                 self._smart_sleep(delay / 1000.0)
             
