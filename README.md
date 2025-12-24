@@ -57,7 +57,6 @@ cd AutoKeyTool
 conda create -n autokey python=3.8
 # 激活环境
 conda activate autokey
-
 # 安装依赖
 pip install -r requirements.txt
 
@@ -77,8 +76,10 @@ python main.py
 如果你想将其打包为独立的 `.exe` 可执行文件分享给朋友，可以使用 `pyinstaller`：
 
 ```bash
+# 安装pyinstaller
 pip install pyinstaller
-pyinstaller -F -w -n "AutoKeyPro" -i "icon.ico" main.py
+# 打包
+pyinstaller -F -w -n "AutoKey Tool" -i "icon.ico" main.py
 
 ```
 
