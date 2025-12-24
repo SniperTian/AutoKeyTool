@@ -34,7 +34,6 @@ class AutoKeyApp(MainWindowUI):
         self.init_tray()            
         self.load_startup_config()  
         self.refresh_windows()      
-        self.register_bind_hotkey() 
 
         self.sig_bind_window.connect(self.on_bind_window_signal)
 
@@ -60,7 +59,7 @@ class AutoKeyApp(MainWindowUI):
 
     def init_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
-        self.tray_icon.setToolTip("AutoKey Pro")
+        self.tray_icon.setToolTip("AutoKey Tool")
         icon_pixmap = IconUtils.create_default_icon()
         self.tray_icon.setIcon(QIcon(icon_pixmap))
         
@@ -88,7 +87,7 @@ class AutoKeyApp(MainWindowUI):
     def do_bind_window(self):
         try:
             hwnd, title = WindowMgr.get_foreground_window_info()
-            if title and "AutoKey Pro" in title:
+            if title and "AutoKey Tool" in title:
                 self.update_status("⚠️ 提示: 你绑定了本程序窗口")
             if hwnd:
                 self._bind_window_ui(hwnd, title)

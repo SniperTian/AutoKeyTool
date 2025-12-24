@@ -1,4 +1,4 @@
-# AutoKey Pro (Windows版)
+# AutoKey Tool
 
 ## 📌 简介
 一个轻量级的 Windows 键盘自动化工具。支持可视化编辑按键序列、后台执行、全局热键控制。
