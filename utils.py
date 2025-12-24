@@ -1,7 +1,8 @@
 import win32gui
 import win32con
 import win32api
-from PyQt6.QtGui import QPixmap, QPainter, QColor
+from PyQt6.QtGui import QPixmap, QPainter, QColor, QLinearGradient, QBrush, QFont, QPen
+from PyQt6.QtCore import Qt, QRect
 
 class WindowMgr:
     @staticmethod
@@ -88,17 +89,41 @@ class TextUtils:
 class IconUtils:
     @staticmethod
     def create_default_icon():
-        pixmap = QPixmap(64, 64)
-        pixmap.fill(QColor(0, 0, 0, 0))
+        """绘制一个现代风格的程序图标 (AK + 渐变蓝 + 绿点)"""
+        size = 64
+        pixmap = QPixmap(size, size)
+        pixmap.fill(QColor(0, 0, 0, 0)) # 透明背景
+        
         painter = QPainter(pixmap)
-        painter.setBrush(QColor("#4CAF50"))
-        painter.setPen(QColor("#388E3C"))
-        painter.drawRoundedRect(4, 4, 56, 56, 10, 10)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing) # 开启抗锯齿
+        
+        # 1. 绘制背景 (圆角矩形 + 科技蓝渐变)
+        gradient = QLinearGradient(0, 0, 0, size)
+        gradient.setColorAt(0.0, QColor("#42A5F5")) # 亮蓝
+        gradient.setColorAt(1.0, QColor("#1976D2")) # 深蓝
+        
+        painter.setBrush(QBrush(gradient))
+        painter.setPen(Qt.PenStyle.NoPen)
+        
+        # 留出一点边距，画圆角矩形
+        rect = QRect(4, 4, 56, 56)
+        painter.drawRoundedRect(rect, 14, 14)
+        
+        # 2. 绘制文字 "AK"
         painter.setPen(QColor("white"))
-        font = painter.font()
-        font.setPixelSize(40)
-        font.setBold(True)
+        # 使用粗体无衬线字体
+        font = QFont("Segoe UI", 26, QFont.Weight.Bold) 
+        font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
         painter.setFont(font)
-        painter.drawText(0, 0, 64, 64, 0x0084, "A")
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "AK")
+        
+        # 3. 绘制右下角绿色状态灯 (象征自动化/运行)
+        painter.setBrush(QColor("#00E676")) # 荧光绿
+        # 加上白色描边让点更突出
+        pen = QPen(QColor("white"))
+        pen.setWidth(2)
+        painter.setPen(pen)
+        painter.drawEllipse(44, 44, 12, 12)
+        
         painter.end()
         return pixmap

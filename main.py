@@ -29,6 +29,7 @@ class AutoKeyApp(MainWindowUI):
         self.current_start_key = "f9"
         self.current_stop_key = "f10"
         self.current_bind_key = "f11"
+        self.setWindowIcon(QIcon(IconUtils.create_default_icon()))
 
         self.bind_events()          
         self.init_tray()            
@@ -259,7 +260,7 @@ class AutoKeyApp(MainWindowUI):
                     {"key": "S", "delay": 1000}, 
                     {"key": "D", "delay": 1000}
                 ],
-                "mode": "keyboard", "mouse_cps": 5, "minimize_to_tray": False
+                "mode": "keyboard", "mouse_cps": 100, "minimize_to_tray": False
             }
             ConfigManager.save_config(DEFAULT_CONFIG_FILE, default_data)
         
