@@ -1,0 +1,10 @@
+{
+    "start": "f9",
+    "stop": "f10",
+    "bind": "f11",
+    "loop": 1,
+    "actions": [],
+    "mode": "keyboard",
+    "mouse_cps": 5,
+    "minimize_to_tray": true
+}

@@ -1,0 +1,4 @@
+PyQt6
+keyboard
+pyinstaller
+pywin32
